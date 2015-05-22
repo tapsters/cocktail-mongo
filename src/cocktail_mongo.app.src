@@ -1,0 +1,7 @@
+{application, cocktail_mongo,
+   [{description, "MongoDB backend for Cocktail abstract database"},
+    {vsn, "1"},
+    {modules, [ctail_mongo]},
+    {registered, []},
+    {applications, [kernel, stdlib, mongodb]},
+    {env, []} ]}.
