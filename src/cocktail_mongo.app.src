@@ -3,5 +3,5 @@
     {vsn, "1"},
     {modules, [ctail_mongo]},
     {registered, []},
-    {applications, [kernel, stdlib, mongodb]},
+    {applications, [kernel, stdlib, mongodb, poolboy]},
     {env, []} ]}.

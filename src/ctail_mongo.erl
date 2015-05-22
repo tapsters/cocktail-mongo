@@ -5,107 +5,150 @@
 
 -include_lib("cocktail/include/ctail.hrl").
 
+-export([init/0]).
+-export([create_table/1, add_table_index/2, dir/0, destroy/0]).
+-export([next_id/2, put/1, delete/2]).
+-export([get/2, index/3, all/1, count/1]).
+
 -define(POOL_NAME, mongo_pool).
 
 init() -> 
-  connect(), 
-  [kvs:init(?MODULE, M) || M <- kvs:modules()], 
-  ok;
+  connect(),
+  create_schema(?MODULE),
+  ok.
 
 connect() ->
-  {Conn,Pool} = config(),
-  case Pool of none -> connect(Conn); _ -> connect(Pool,Conn) end.
-connect(Conn) ->
-  Spec = {?POOL_NAME,{gen_server,start_link,[{local,?POOL_NAME},mc_worker,Conn,[]]},
-          permanent,5000,worker,[kvs_sup]},
-  {ok,_} = supervisor:start_child(kvs_sup,Spec),put(no_pool,true),ok.
-connect(Pool,Conn) ->
-  application:start(poolboy),
-  Spec = poolboy:child_spec(?POOL_NAME,[{name,{local,?POOL_NAME}},{worker_module,mc_worker}]++Pool,Conn),
-  {ok,_} = supervisor:start_child(kvs_sup,Spec),ok.
-
-config() ->
-  Config = kvs:config(kvs,mongo),
-  {connection,Conn} = proplists:lookup(connection,Config),
-  P = proplists:lookup(pool,Config),
-  Pool = case P of {pool,Pl} -> Pl; _ -> none end,
-  {Conn,Pool}.
+  Config = ctail:config(mongo),
+  
+  {connection, ConnectionConfig} = proplists:lookup(connection, Config),
+  {pool,       PoolConfig}       = proplists:lookup(pool, Config),
+  
+  PoolBaseOptions = [{name, {local, ?POOL_NAME}}, {worker_module, mc_worker}],
+  PoolOptions     = PoolBaseOptions++PoolConfig,
+  Spec            = poolboy:child_spec(?POOL_NAME, PoolOptions, ConnectionConfig), 
+  {ok, _}         = supervisor:start_child(ctail_sup, Spec).
 
 transaction(Fun) ->
-  case get(no_pool) of true -> Fun(?POOL_NAME); _ -> poolboy:transaction(?POOL_NAME,Fun) end.
+  poolboy:transaction(?POOL_NAME, Fun).
+
+create_table(Table _Options) -> 
+  transaction(fun (W) -> mongo:command(W, {<<"create">>, to_binary(Table)}) end).
+
+add_table_index(Table, Key) ->
+  Parameters = {key, {to_binary(Key, true), 1}},
+  transaction(fun (W) -> mongo:ensure_index(W, to_binary(Tab), Parameters) end).
 
 dir() ->
-  {_,{_,{_,_,_,_,_,Colls}}} = transaction(fun (W) -> mongo:command(W,{<<"listCollections">>,1}) end),
-  [{table,binary_to_list(C)} || {_,C,_,_} <- Colls].
+  Command = {<<"listCollections">>, 1},
+  {_, {_, {_, _, _, _, _, Collections}}} = transaction(fun (W) -> mongo:command(W, Command) end), 
+  [ binary_to_list(Collection) || {_, Collection, _, _} <- Collections ].
 
-destroy() -> transaction(fun (W) -> [mongo:command(W,{<<"drop">>,to_binary(T)}) || {_,T} <- dir()] end).
+drop_table(Table) ->
+  transaction(fun (W) -> mongo:command(W, {<<"drop">>, to_binary(Table)}) end).
 
-next_id(_Tab,_Incr) -> mongo_id_server:object_id().
+destroy() -> 
+  [ drop_table(Table) || {_, Table} <- dir() ],
+  ok.
 
-to_binary(V) -> to_binary(V,false).
-to_binary(V,ForceList) ->
-  if is_integer(V) -> V;
-    is_list(V) -> unicode:characters_to_binary(V,utf8,utf8);
-    is_atom(V) -> list_to_binary(atom_to_list(V));
-    is_pid(V)  -> {pid,list_to_binary(pid_to_list(V))};
-    true -> case ForceList of true -> [P] = io_lib:format("~p",[V]),list_to_binary(P); _ -> V end
+next_id(_Table _Incr) -> 
+  mongo_id_server:object_id().
+
+to_binary(Value) -> 
+  to_binary(Value, false).
+to_binary(Value, ForceList) ->
+  if is_integer(Value) -> Value;
+    is_list(Value) -> 
+      unicode:characters_to_binary(Value, utf8, utf8);
+    is_atom(Value) -> 
+      list_to_binary(atom_to_list(Value));
+    is_pid(Value) -> 
+      {pid, list_to_binary(pid_to_list(Value))};
+    true -> 
+      case ForceList of 
+        true -> 
+          [List] = io_lib:format("~p", [Value]), 
+          list_to_binary(List);
+        _ -> Value
+      end
   end.
 
-make_document(Tab,Key,Values) ->
-  Table = kvs:table(Tab),
-  list_to_tuple(['_id',Key|list_to_doc(tl(Table#table.fields),Values)]).
+make_document(Table, Key, Values) ->
+  TableInfo = ctail:table(Table), 
+  Document = list_to_document(tl(TableInfo#table.fields), Values),
+  list_to_tuple(['_id', Key|Document]).
 
-list_to_doc([],[]) -> [];
-list_to_doc([F|Fields],[V|Values]) ->
-  case V of
-    undefined -> list_to_doc(Fields,Values);
-    _ -> [F,to_binary(V)|list_to_doc(Fields,Values)]
+list_to_document([],             [])             -> [];
+list_to_document([Field|Fields], [Value|Values]) ->
+  case Value of
+    undefined -> 
+      list_to_doc(Fields, Values);
+    _ -> 
+      [Field, to_binary(Value)|list_to_document(Fields, Values)]
   end.
 
-make_record(Tab,Doc) ->
-  Table = kvs:table(Tab),
-  DocPropList = doc_to_proplist(tuple_to_list(Doc)),
-  list_to_tuple([Tab|[proplists:get_value(F,DocPropList) || F <- Table#table.fields]]).
-
-decode_value(<<"true">>) -> true;
-decode_value(<<"false">>) -> false;
-decode_value({pid,Pid}) -> list_to_pid(binary_to_list(Pid));
-decode_value(V) when is_binary(V) -> unicode:characters_to_list(V,utf8);
-decode_value(V) -> V.
-
-doc_to_proplist(Doc) -> doc_to_proplist(Doc,[]).
-doc_to_proplist([],Acc) -> Acc;
-doc_to_proplist(['_id',V|Doc],Acc) -> doc_to_proplist(Doc,[{id,V}|Acc]);
-doc_to_proplist([F,V|Doc],Acc) -> doc_to_proplist(Doc,[{F,decode_value(V)}|Acc]).
-
-get(Tab,Key) ->
-  Result = transaction(fun (W) -> mongo:find_one(W,to_binary(Tab),{'_id',Key}) end),
-  case Result of {} -> {error,not_found}; {Doc} -> make_record(Tab,Doc) end.
+persist(Record) ->
+  Table = element(1, Record), 
+  Key   = element(2, Record), 
+  
+  [_, _|Values] = tuple_to_list(Record), 
+  Document = make_document(Table, Key, Values),
+  
+  transaction(fun (W) -> mongo:insert(W, to_binary(Table), Document) end).
 
 put(Records) when is_list(Records) ->
-  try lists:foreach(fun mongo_put/1,Records) catch error:Reason -> {error,Reason} end;
-put(Record) -> put([Record]).
+  try lists:foreach(fun persist/1, Records) 
+  catch 
+    error:Reason -> {error, Reason} 
+  end;
+put(Record) -> 
+  put([Record]).
 
-mongo_put(Record) ->
-  Tab = element(1,Record),
-  Key = element(2,Record),
-  [_,_|Values] = tuple_to_list(Record),
-  transaction(fun (W) -> mongo:insert(W,to_binary(Tab),make_document(Tab,Key,Values)) end).
+delete(Table, Key) ->
+  transaction(fun (W) -> mongo:delete_one(W, to_binary(Table), {'_id', Key}) end), ok.
 
-delete(Tab,Key) ->
-  transaction(fun (W) -> mongo:delete_one(W,to_binary(Tab),{'_id',Key}) end),ok.
+make_record(Table, Document) ->
+  TableInfo = ctail:table(Table), 
+  PropList  = document_to_proplist(tuple_to_list(Document)), 
+  Values    = [proplists:get_value(Field, PropList) || Field <- TableInfo#table.fields],
 
-mongo_find(Tab,Sel) ->
-  Cursor = transaction(fun (W) -> mongo:find(W,to_binary(Tab),Sel) end),
-  Result = mc_cursor:rest(Cursor),
-  mc_cursor:close(Cursor),
-  case Result of [] -> []; _ -> [make_record(Tab,Doc) || Doc <- Result] end.
+  list_to_tuple([Table|Values]).
 
-all(Tab) -> mongo_find(Tab,{}).
-index(Tab,Key,Value) -> mongo_find(Tab,{to_binary(Key),to_binary(Value)}).
-create_table(Tab,_Options) -> transaction(fun (W) -> mongo:command(W,{<<"create">>,to_binary(Tab)}) end).
+decode_value(<<"true">>)                  -> true;
+decode_value(<<"false">>)                 -> false;
+decode_value({pid, Pid})                  -> list_to_pid(binary_to_list(Pid));
+decode_value(Value) when is_binary(Value) -> unicode:characters_to_list(Value, utf8);
+decode_value(Value)                       -> Value.
 
-add_table_index(Tab,Key) ->
-  transaction(fun (W) -> mongo:ensure_index(W,to_binary(Tab),{key,{to_binary(Key,true),1}}) end).
+document_to_proplist(Doc)                 -> document_to_proplist(Doc, []).
+document_to_proplist([],             Acc) -> Acc;
+document_to_proplist(['_id', V|Doc], Acc) -> document_to_proplist(Doc, [{id, V}|Acc]);
+document_to_proplist([F,     V|Doc], Acc) -> document_to_proplist(Doc, [{F, decode_value(V)}|Acc]).
 
-count(Tab) -> {_,{_,N}} = transaction(fun (W) -> mongo:command(W,{<<"count">>,to_binary(Tab)}) end),N.
+get(Table Key) ->
+  Result = transaction(fun (W) -> mongo:find_one(W, to_binary(Tab), {'_id', Key}) end), 
+  case Result of 
+    {} -> 
+      {error, not_found}; 
+    {Document} -> 
+      make_record(Table, Document)
+  end.
+
+find(Table, Selector) ->
+  Cursor = transaction(fun (W) -> mongo:find(W, to_binary(Table), Selector) end), 
+  Result = mc_cursor:rest(Cursor), 
+  mc_cursor:close(Cursor), 
+  case Result of 
+    [] -> []; 
+    _ -> [make_record(Table, Document) || Document <- Result] 
+  end.
+
+index(Table, Key, Value) -> 
+  find(Table, {to_binary(Key), to_binary(Value)}).
+
+all(Table) -> 
+  find(Table, {}).
+
+count(Table) -> 
+  Command = {<<"count">>, to_binary(Table)},
+  {_, {_, Count}} = transaction(fun (W) -> mongo:command(W, Command) end),
+  Count.
