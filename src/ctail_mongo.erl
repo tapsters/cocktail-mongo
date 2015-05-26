@@ -128,8 +128,7 @@ delete(Table, Key) ->
   ok.
 
 make_record(Table, Document) ->
-  TableInfo = ctail:table(Table), 
-  io:format("TABLE: ~p~n", [ctail:table(Table)]),
+  TableInfo = ctail:table(Table),
   PropList  = document_to_proplist(tuple_to_list(Document)), 
   Values    = [proplists:get_value(Field, PropList) || Field <- TableInfo#table.fields],
 
