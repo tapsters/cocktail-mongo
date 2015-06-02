@@ -19,11 +19,13 @@
 exec(Fun, Args) ->
   poolboy:transaction(?POOL_NAME, fun (W) -> apply(mongo, Fun, [W]++Args) end).
 
+-spec init() -> ok.
 init() ->
   connect(),
   ctail:create_schema(?MODULE),
   ok.
 
+-spec connect() -> {ok, any()}.
 connect() ->
   Config = ctail:config(mongo),
 
@@ -35,12 +37,15 @@ connect() ->
   Spec            = poolboy:child_spec(?POOL_NAME, PoolOptions, ConnectionConfig),
   {ok, _}         = supervisor:start_child(ctail_sup, Spec).
 
+-spec create_table(Table::#table{}) -> ok | {error, any()}.
 create_table(Table) ->
   exec(command, [{<<"create">>, to_binary(Table#table.name)}]).
 
+-spec add_table_index(Table::atom(), Field::atom()) -> ok | {error, any()}.
 add_table_index(Table, Key) ->
   exec(ensure_index, [to_binary(Table), {key, {to_binary(Key, true), 1}}]).
 
+-spec dir() -> list(atom()).
 dir() ->
   Command = {<<"listCollections">>, 1},
   {_, {_, {_, _, _, _, _, Collections}}} = exec(command, [Command]),
@@ -49,10 +54,12 @@ dir() ->
 drop_table(Table) ->
   exec(command, [{<<"drop">>, to_binary(Table)}]).
 
+-spec destroy() -> ok.
 destroy() ->
   [ drop_table(Table) || {_, Table} <- dir() ],
   ok.
 
+-spec next_id(Table::atom(), Incr::integer()) -> ctail:id().
 next_id(_Table, _Incr) ->
   mongo_id_server:object_id().
 
@@ -115,6 +122,7 @@ persist(Record) ->
 
   exec(update, [to_binary(Table), Selector, Document, true]).
 
+-spec put(Record::tuple() | list(tuple())) -> ok | {error, any()}.
 put(Records) when is_list(Records) ->
   try lists:foreach(fun persist/1, Records)
   catch
@@ -123,6 +131,7 @@ put(Records) when is_list(Records) ->
 put(Record) ->
   put([Record]).
 
+-spec delete(Table::atom(), Key::ctail:id()) -> ok | {error, any()}.
 delete(Table, Key) ->
   exec(delete_one, [to_binary(Table), {'_id', Key}]),
   ok.
@@ -146,6 +155,10 @@ document_to_proplist([],             Acc) -> Acc;
 document_to_proplist(['_id', V|Doc], Acc) -> document_to_proplist(Doc, [{id, V}|Acc]);
 document_to_proplist([F,     V|Doc], Acc) -> document_to_proplist(Doc, [{F, decode_field(V)}|Acc]).
 
+-spec get(Table::atom(), Key::ctail:id()) ->
+  {ok, tuple()}
+  | {error, duplicated}
+  | {error, not_found}.
 get(Table, Key) ->
   Result = exec(find_one, [to_binary(Table), {'_id', to_binary(Key)}]),
   case Result of
@@ -165,12 +178,15 @@ find(Table, Selector) ->
     _ -> [make_record(Table, Document) || Document <- Result]
   end.
 
+-spec index(Table::atom(), Key::ctail:id(), Value::any()) -> list(tuple()).
 index(Table, Key, Value) ->
   find(Table, {to_binary(Key), to_binary(Value)}).
 
+-spec all(Table::atom()) -> list(tuple()).
 all(Table) ->
   find(Table, {}).
 
+-spec count(Table::atom()) -> integer().
 count(Table) ->
   {_, {_, Count}} = exec(command, [{<<"count">>, to_binary(Table)}]),
   Count.
