@@ -61,6 +61,7 @@ next_id(_Table, _Incr) ->
   mongo_id_server:object_id().
 
 to_binary({<<ObjectId:12/binary>>}) -> {ObjectId};
+to_binary({Key, Value})             -> {Key, to_binary(Value)};
 to_binary(Value)                    -> to_binary(Value, false).
 
 to_binary(Value, ForceList) ->
@@ -94,6 +95,11 @@ make_field(Value) ->
       end;
     is_pid(Value) -> 
       {pid, list_to_binary(pid_to_list(Value))};
+    is_list(Value)  ->
+      case io_lib:printable_unicode_list(Value) of
+        false -> lists:foldl(fun (V, Acc) -> [make_field(V)|Acc] end, [], Value);
+        true  -> to_binary(Value)
+      end;
     true ->
       to_binary(Value)
   end.
@@ -119,10 +125,9 @@ list_to_document([Field|Fields], [Value|Values]) ->
 persist(Record) ->
   Table         = element(1, Record), 
   Key           = element(2, Record), 
-  [_, _|Values] = tuple_to_list(Record), 
+  [_, _|Values] = tuple_to_list(Record),
   Document      = make_document(Table, Key, Values),
   Selector      = {'_id', make_id(Key)},
-
   exec(update, [to_binary(Table), Selector, Document, true]).
 
 put(Records) when is_list(Records) ->
