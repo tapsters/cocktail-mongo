@@ -7,7 +7,7 @@
 
 %% Custom functions
 -export([exec/2]).
--export([find/2, find/3]).
+-export([find/3]).
 
 %% Backend callbacks
 -export([init/0]).
@@ -180,9 +180,6 @@ get(Table, Key) ->
       {ok, make_record(Table, Document)}
   end.
 
-find(Table, Selector) ->
-  find(Table, Selector, infinity).
-
 find(Table, Selector, Limit) ->
   Cursor = exec(find, [to_binary(Table), Selector]),
   Result = mc_cursor:take(Cursor, Limit),
@@ -194,10 +191,10 @@ find(Table, Selector, Limit) ->
   end.
 
 index(Table, Key, Value) -> 
-  find(Table, {to_binary(Key), to_binary(Value)}).
+  find(Table, {to_binary(Key), to_binary(Value)}, infinity).
 
 all(Table) -> 
-  find(Table, {}).
+  find(Table, {}, infinity).
 
 count(Table) -> 
   {_, {_, Count}} = exec(command, [{<<"count">>, to_binary(Table)}]),
