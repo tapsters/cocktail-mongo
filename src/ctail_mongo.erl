@@ -7,6 +7,7 @@
 
 %% Custom functions
 -export([exec/2]).
+-export([find/2, find/3]).
 
 %% Backend callbacks
 -export([init/0]).
@@ -180,13 +181,16 @@ get(Table, Key) ->
   end.
 
 find(Table, Selector) ->
-  Cursor = exec(find, [to_binary(Table), Selector]), 
-  Result = mc_cursor:rest(Cursor), 
-  mc_cursor:close(Cursor), 
-  
-  case Result of 
-    [] -> []; 
-    _ -> [make_record(Table, Document) || Document <- Result] 
+  find(Table, Selector, infinity).
+
+find(Table, Selector, Limit) ->
+  Cursor = exec(find, [to_binary(Table), Selector]),
+  Result = mc_cursor:take(Cursor, Limit),
+  mc_cursor:close(Cursor),
+
+  case Result of
+    [] -> [];
+    _ -> [make_record(Table, Document) || Document <- Result]
   end.
 
 index(Table, Key, Value) -> 
