@@ -41,18 +41,18 @@ connect() ->
   {ok, _}         = supervisor:start_child(ctail_sup, Spec).
 
 create_table(Table) -> 
-  exec(<<"command">>, [{<<"create">>, to_binary(Table#table.name)}]).
+  exec(command, [{<<"create">>, to_binary(Table#table.name)}]).
 
 add_table_index(Table, Key) ->
-  exec(<<"ensure_index">>, [to_binary(Table), {<<"key">>, {to_binary(Key, true), 1}}]).
+  exec(ensure_index, [to_binary(Table), {<<"key">>, {to_binary(Key, true), 1}}]).
 
 dir() ->
   Command = {<<"listCollections">>, 1},
-  {_, {_, {_, _, _, _, _, Collections}}} = exec(<<"command">>, [Command]), 
+  {_, {_, {_, _, _, _, _, Collections}}} = exec(command, [Command]),
   [ binary_to_list(Collection) || {_, Collection, _, _} <- Collections ].
 
 drop_table(Table) ->
-  exec(<<"command">>, [{<<"drop">>, to_binary(Table)}]).
+  exec(command, [{<<"drop">>, to_binary(Table)}]).
 
 destroy() -> 
   [ drop_table(Table) || Table <- dir() ],
@@ -129,7 +129,7 @@ persist(Record) ->
   [_, _|Values] = tuple_to_list(Record),
   Document      = make_document(Table, Key, Values),
   Selector      = {<<"_id">>, make_id(Key)},
-  exec(<<"update">>, [to_binary(Table), Selector, <<"$set">>, Document, true]).
+  exec(update, [to_binary(Table), Selector, <<"$set">>, Document, true]).
 
 put(Records) when is_list(Records) ->
   try lists:foreach(fun persist/1, Records) 
@@ -140,7 +140,7 @@ put(Record) ->
   put([Record]).
 
 delete(Table, Key) ->
-  exec(<<"delete_one">>, [to_binary(Table), {<<"_id">>, Key}]), 
+  exec(delete_one, [to_binary(Table), {<<"_id">>, Key}]),
   ok.
 
 make_record(Table, Document) ->
@@ -172,7 +172,7 @@ document_to_proplist([<<"feed_id">>, V|Doc], Acc) -> document_to_proplist(Doc, [
 document_to_proplist([F,             V|Doc], Acc) -> document_to_proplist(Doc, [{F, decode_field(V)}|Acc]).
 
 get(Table, Key) ->
-  Result = exec(<<"find_one">>, [to_binary(Table), {<<"_id">>, make_id(Key)}]),
+  Result = exec(find_one, [to_binary(Table), {<<"_id">>, make_id(Key)}]),
   case Result of 
     {} -> 
       {error, not_found}; 
@@ -181,7 +181,7 @@ get(Table, Key) ->
   end.
 
 find(Table, Selector, Limit) ->
-  Cursor = exec(<<"find">>, [to_binary(Table), Selector]),
+  Cursor = exec(find, [to_binary(Table), Selector]),
   Result = mc_cursor:take(Cursor, Limit),
   mc_cursor:close(Cursor),
 
@@ -197,5 +197,5 @@ all(Table) ->
   find(Table, {}, infinity).
 
 count(Table) -> 
-  {_, {_, Count}} = exec(<<"command">>, [{<<"count">>, to_binary(Table)}]),
+  {_, {_, Count}} = exec(command, [{<<"count">>, to_binary(Table)}]),
   Count.
