@@ -129,7 +129,7 @@ persist(Record) ->
   [_, _|Values] = tuple_to_list(Record),
   Document      = make_document(Table, Key, Values),
   Selector      = {<<"_id">>, make_id(Key)},
-  exec(update, [to_binary(Table), Selector, <<"$set">>, Document, true]).
+  exec(update, [to_binary(Table), Selector, {<<"$set">>, Document}, true]).
 
 put(Records) when is_list(Records) ->
   try lists:foreach(fun persist/1, Records) 
