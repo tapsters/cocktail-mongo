@@ -172,7 +172,7 @@ document_to_proplist([<<"feed_id">>, V|Doc], Acc) -> document_to_proplist(Doc, [
 document_to_proplist([F,             V|Doc], Acc) -> document_to_proplist(Doc, [{F, decode_field(V)}|Acc]).
 
 get(Table, Key) ->
-  Result = exec(<<<"find_one">>, [to_binary(Table), {<<"_id">>, make_id(Key)}]), 
+  Result = exec(<<"find_one">>, [to_binary(Table), {<<"_id">>, make_id(Key)}]),
   case Result of 
     {} -> 
       {error, not_found}; 
