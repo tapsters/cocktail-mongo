@@ -146,7 +146,7 @@ delete(Table, Key) ->
 make_record(Table, Document) ->
   TableInfo = ctail:table(Table), 
   PropList  = document_to_proplist(tuple_to_list(Document)), 
-  Values    = [proplists:get_value(Field, PropList) || Field <- TableInfo#table.fields],
+  Values    = [proplists:get_value(atom_to_binary(Field, utf8), PropList) || Field <- TableInfo#table.fields],
 
   list_to_tuple([Table|Values]).
 
