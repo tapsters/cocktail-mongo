@@ -87,29 +87,19 @@ make_id({<<ObjectId:12/binary>>}) -> {ObjectId};
 make_id(Term)                     -> to_binary(Term, true).
 
 make_field(Value) ->
-  io:format("MAKE_FIELD: ~p~n", [Value]),
   if 
     is_atom(Value) -> 
-      io:format("IS_ATOM~n"),
       case Value of
-        true  -> to_binary(Value);
-        false -> to_binary(Value);
-        _     -> {<<"atom">>, atom_to_binary(Value, utf8)}
+        true      -> to_binary(Value);
+        false     -> to_binary(Value);
+        _         -> {<<"atom">>, atom_to_binary(Value, utf8)}
       end;
     is_pid(Value) -> 
-      io:format("IS_PID~n"),
       {<<"pid">>, list_to_binary(pid_to_list(Value))};
     is_list(Value)  ->
-      io:format("IS_LIST~n"),
       case io_lib:printable_unicode_list(Value) of
-        false -> io:format("NOT_PRINTABLE, FOLDL~n"), lists:foldl(fun (V, Acc) -> [make_field(V)|Acc] end, [], Value);
-        true  -> io:format("PRINTABLE, TO_BINARY~n"), to_binary(Value)
-      end;
-    is_tuple(Value) ->
-      io:format("TUPLE~n"),
-      case Value of
-        {<<ObjectId:12/binary>>} -> {ObjectId};
-        {Field, Value1}          -> {Field, make_field(Value1)}
+        false -> lists:foldl(fun (V, Acc) -> [make_field(V)|Acc] end, [], Value);
+        true  -> to_binary(Value)
       end;
     true ->
       to_binary(Value)
@@ -137,10 +127,9 @@ persist(Record) ->
   Table         = element(1, Record), 
   Key           = element(2, Record), 
   [_, _|Values] = tuple_to_list(Record),
-  io:format("RECORD: ~p~n", [Record]),
   Document      = make_document(Table, Key, Values),
   Selector      = {<<"_id">>, make_id(Key)},
-  exec(update, [to_binary(Table), Selector, {<<"$set">>, Document}, true]).
+  exec(update, [to_binary(Table), Selector, Document, true]).
 
 put(Records) when is_list(Records) ->
   try lists:foreach(fun persist/1, Records) 
