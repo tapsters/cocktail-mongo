@@ -140,7 +140,7 @@ put(Record) ->
   put([Record]).
 
 delete(Table, Key) ->
-  exec(delete_one, [to_binary(Table), {<<"_id">>, Key}]),
+  exec(delete_one, [to_binary(Table), {<<"_id">>, make_id(Key)}]),
   ok.
 
 make_record(Table, Document) ->
