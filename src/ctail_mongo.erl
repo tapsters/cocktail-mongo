@@ -154,6 +154,7 @@ decode_field(<<"true">>)                  -> true;
 decode_field(<<"false">>)                 -> false;
 decode_field({<<"atom">>, Atom})          -> binary_to_atom(Atom, utf8);
 decode_field({<<"pid">>, Pid})            -> list_to_pid(binary_to_list(Pid));
+decode_field(B={<<"binary">>, _})         -> B;
 decode_field(Value) when is_binary(Value) -> unicode:characters_to_list(Value, utf8);
 decode_field(Value)                       -> Value.
 
