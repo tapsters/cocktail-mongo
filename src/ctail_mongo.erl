@@ -86,6 +86,10 @@ to_binary(Value, ForceList) ->
 make_id({<<ObjectId:12/binary>>}) -> {ObjectId};
 make_id(Term)                     -> to_binary(Term, true).
 
+make_field({<<"geo_point">>, Coords}) when length(Coords) == 2; length(Coords) == 0 -> 
+  {<<"type">>, <<"Point">>, <<"coordinates">>, lists:reverse(Coords)};
+make_field({<<"geo_polygon">>, Coords}) when is_list(Coords) -> 
+  {<<"type">>, <<"Polygon">>, <<"coordinates">>, [lists:reverse(Coord) || Coord <- Coords]};
 make_field(Value) ->
   if 
     is_atom(Value) -> 
@@ -150,6 +154,10 @@ make_record(Table, Document) ->
 
   list_to_tuple([Table|Values]).
 
+decode_field({<<"type">>, <<"Point">>, <<"coordinates">>, Coords}) ->
+    {<<"geo_point">>, lists:reverse(Coords)};
+decode_field({<<"type">>, <<"Polygon">>, <<"coordinates">>, Coords}) ->
+    {<<"geo_polygon">>, [lists:reverse(Coord) || Coord <- Coords]};
 decode_field(<<"true">>)                  -> true;
 decode_field(<<"false">>)                 -> false;
 decode_field({<<"atom">>, Atom})          -> binary_to_atom(Atom, utf8);
