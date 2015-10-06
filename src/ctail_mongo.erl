@@ -90,6 +90,8 @@ make_field({<<"geo_point">>, Coords}) when length(Coords) == 2; length(Coords) =
   {<<"type">>, <<"Point">>, <<"coordinates">>, lists:reverse(Coords)};
 make_field({<<"geo_polygon">>, Coords}) when is_list(Coords) -> 
   {<<"type">>, <<"Polygon">>, <<"coordinates">>, [lists:reverse(Coord) || Coord <- Coords]};
+make_field({Key, Value}) ->
+  {Key, make_field(Value)};
 make_field(Value) ->
   if 
     is_atom(Value) -> 
