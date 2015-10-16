@@ -86,10 +86,6 @@ to_binary(Value, ForceList) ->
 make_id({<<ObjectId:12/binary>>}) -> {ObjectId};
 make_id(Term)                     -> to_binary(Term, true).
 
-make_field({<<"geo_point">>, Coords}) when length(Coords) == 2; length(Coords) == 0 -> 
-  {<<"type">>, <<"Point">>, <<"coordinates">>, lists:reverse(Coords)};
-make_field({<<"geo_polygon">>, Coords}) when is_list(Coords) -> 
-  {<<"type">>, <<"Polygon">>, <<"coordinates">>, [lists:reverse(Coord) || Coord <- Coords]};
 make_field({Key, Value}) ->
   {Key, make_field(Value)};
 make_field(Value) ->
