@@ -152,10 +152,6 @@ make_record(Table, Document) ->
 
   list_to_tuple([Table|Values]).
 
-decode_field({<<"type">>, <<"Point">>, <<"coordinates">>, Coords}) ->
-    {<<"geo_point">>, lists:reverse(Coords)};
-decode_field({<<"type">>, <<"Polygon">>, <<"coordinates">>, Coords}) ->
-    {<<"geo_polygon">>, [lists:reverse(Coord) || Coord <- Coords]};
 decode_field(<<"true">>)                  -> true;
 decode_field(<<"false">>)                 -> false;
 decode_field({<<"atom">>, Atom})          -> binary_to_atom(Atom, utf8);
