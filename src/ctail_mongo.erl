@@ -100,7 +100,7 @@ make_field(Value) ->
       {<<"pid">>, list_to_binary(pid_to_list(Value))};
     is_list(Value)  ->
       case io_lib:printable_unicode_list(Value) of
-        false -> lists:foldl(fun (V, Acc) -> [make_field(V)|Acc] end, [], Value);
+        false -> lists:map(fun make_field/1, Value);
         true  -> to_binary(Value)
       end;
     true ->
@@ -157,7 +157,13 @@ decode_field(<<"false">>)                 -> false;
 decode_field({<<"atom">>, Atom})          -> binary_to_atom(Atom, utf8);
 decode_field({<<"pid">>, Pid})            -> list_to_pid(binary_to_list(Pid));
 decode_field(B={<<"binary">>, _})         -> B;
+decode_field({Key, Value})                -> {Key, decode_field(Value)};
 decode_field(Value) when is_binary(Value) -> unicode:characters_to_list(Value, utf8);
+decode_field(Value) when is_list(Value)   ->
+  case io_lib:printable_unicode_list(Value) of
+    false -> lists:map(fun decode_field/1, Value);
+    true  -> Value
+  end;
 decode_field(Value)                       -> Value.
 
 decode_id({<<ObjectId:12/binary>>}) -> 
