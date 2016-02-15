@@ -161,12 +161,34 @@ decode_field({Key, Value})                -> {Key, decode_field(Value)};
 decode_field(Value) when is_binary(Value) -> unicode:characters_to_list(Value, utf8);
 decode_field(Value) when is_list(Value)   ->
   case io_lib:printable_unicode_list(Value) of
-    false -> lists:map(fun decode_field/1, Value);
+    false ->
+        case is_proplist(Value) of
+          false ->
+            lists:map(fun decode_field/1, Value);
+          true  ->
+            [ begin
+                Atom = try binary_to_existing_atom(Key, utf8)
+                        catch error:badarg -> Key
+                        end,
+                {Atom, decode_field(Val)}
+              end || {Key, Val} <- Value]
+        end;
     true  -> Value
   end;
 decode_field(Value)                       -> Value.
 
-decode_id({<<ObjectId:12/binary>>}) -> 
+is_proplist(List) ->
+    is_list(List) andalso
+        lists:all(fun({AtomKey,_}) ->
+                       Atom = try binary_to_existing_atom(AtomKey, utf8)
+                       catch error:badarg -> AtomKey
+                       end,
+                       is_atom(Atom);
+                     (_)           -> false
+                  end,
+                  List).
+
+decode_id({<<ObjectId:12/binary>>}) ->
   {ObjectId};
 decode_id(List) ->
   {ok, Tokens, _EndLine} = erl_scan:string(lists:append(binary_to_list(List), ".")),
