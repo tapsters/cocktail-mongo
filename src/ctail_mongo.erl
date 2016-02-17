@@ -167,9 +167,7 @@ decode_field(Value) when is_list(Value)   ->
             lists:map(fun decode_field/1, Value);
           true  ->
             [ begin
-                Atom = try binary_to_existing_atom(Key, utf8)
-                        catch error:badarg -> Key
-                        end,
+                Atom = binary_to_atom(Key, utf8),
                 {Atom, decode_field(Val)}
               end || {Key, Val} <- Value]
         end;
@@ -180,7 +178,7 @@ decode_field(Value)                       -> Value.
 is_proplist(List) ->
     is_list(List) andalso
         lists:all(fun({AtomKey,_}) ->
-                       Atom = try binary_to_existing_atom(AtomKey, utf8)
+                       Atom = try binary_to_atom(AtomKey, utf8)
                        catch error:badarg -> AtomKey
                        end,
                        is_atom(Atom);
