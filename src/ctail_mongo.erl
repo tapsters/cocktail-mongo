@@ -38,7 +38,10 @@ connect() ->
   PoolBaseOptions = [{name, {local, ?POOL_NAME}}, {worker_module, mc_worker}],
   PoolOptions     = PoolBaseOptions++PoolConfig,
   Spec            = poolboy:child_spec(?POOL_NAME, PoolOptions, ConnectionConfig), 
-  {ok, _}         = supervisor:start_child(ctail_sup, Spec).
+  case supervisor:get_childspec(ctail_sup, ?POOL_NAME) of
+    {ok,_}            -> already_started;
+    {error,not_found} -> {ok,_} = supervisor:start_child(ctail_sup, Spec)
+  end.
 
 create_table(Table) -> 
   exec(command, [{<<"create">>, to_binary(Table#table.name)}]).
