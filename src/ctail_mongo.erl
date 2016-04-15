@@ -156,9 +156,16 @@ decode_field(<<"true">>)                  -> true;
 decode_field(<<"false">>)                 -> false;
 decode_field({<<"atom">>, Atom})          -> binary_to_atom(Atom, utf8);
 decode_field({<<"pid">>, Pid})            -> list_to_pid(binary_to_list(Pid));
+decode_field({<<"tuple_list">>, List})    ->
+  lists:foldl(fun({Key, Value}, Acc) ->
+                Acc ++ [{decode_key(Key), decode_field(Value)}]
+              end, [], List);
+
 decode_field(B={<<"binary">>, _})         -> B;
-decode_field({Key, Value})                -> {Key, decode_field(Value)};
-decode_field(Value) when is_binary(Value) -> unicode:characters_to_list(Value, utf8);
+decode_field({Key, Value})                ->
+  {decode_key(Key), decode_field(Value)};
+decode_field(Value) when is_binary(Value) ->
+  unicode:characters_to_list(Value, utf8);
 decode_field(Value) when is_list(Value)   ->
   case io_lib:printable_unicode_list(Value) of
     false ->
@@ -173,7 +180,17 @@ decode_field(Value) when is_list(Value)   ->
         end;
     true  -> Value
   end;
-decode_field(Value)                       -> Value.
+decode_field(Value)                       ->  Value.
+
+decode_key(V) when is_atom(V) -> atom_to_binary(V, utf8);
+decode_key(V) when is_list(V) ->
+  case io_lib:printable_unicode_list(V) of
+    true -> list_to_binary(V);
+    false -> <<"unknown">>
+  end;
+decode_key(V) when is_binary(V) -> V;
+decode_key(_V) -> <<"unknown">>.
+
 
 is_proplist(List) ->
     is_list(List) andalso
