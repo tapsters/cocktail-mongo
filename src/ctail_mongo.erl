@@ -20,11 +20,11 @@
 %% Custom functions
 
 exec(Fun, Args) ->
-  poolboy:transaction(?POOL_NAME, fun (W) -> apply(mongo, Fun, [W]++Args) end).
+  poolboy:transaction(?POOL_NAME, fun (W) -> apply(mc_worker_api, Fun, [W]++Args) end).
 
 %% Backend callbacks
 
-init() -> 
+init() ->
   connect(),
   ctail:create_schema(?MODULE),
   ok.
@@ -34,13 +34,13 @@ connect() ->
 
   {connection, ConnectionConfig} = proplists:lookup(connection, Config),
   {pool,       PoolConfig}       = proplists:lookup(pool, Config),
-  
+
   PoolBaseOptions = [{name, {local, ?POOL_NAME}}, {worker_module, mc_worker}],
   PoolOptions     = PoolBaseOptions++PoolConfig,
-  Spec            = poolboy:child_spec(?POOL_NAME, PoolOptions, ConnectionConfig), 
+  Spec            = poolboy:child_spec(?POOL_NAME, PoolOptions, ConnectionConfig),
   {ok, _}         = supervisor:start_child(ctail_sup, Spec).
 
-create_table(Table) -> 
+create_table(Table) ->
   exec(command, [{<<"create">>, to_binary(Table#table.name)}]).
 
 add_table_index(Table, Key) ->
@@ -54,11 +54,11 @@ dir() ->
 drop_table(Table) ->
   exec(command, [{<<"drop">>, to_binary(Table)}]).
 
-destroy() -> 
+destroy() ->
   [ drop_table(Table) || Table <- dir() ],
   ok.
 
-next_id(_Table, _Incr) -> 
+next_id(_Table, _Incr) ->
   mongo_id_server:object_id().
 
 to_binary({<<ObjectId:12/binary>>}) -> {ObjectId};
@@ -66,19 +66,19 @@ to_binary({Key, Value})             -> {Key, to_binary(Value)};
 to_binary(Value)                    -> to_binary(Value, false).
 
 to_binary(Value, ForceList) ->
-  if 
-    is_integer(Value) -> 
+  if
+    is_integer(Value) ->
       Value;
-    is_list(Value) -> 
+    is_list(Value) ->
       unicode:characters_to_binary(Value, utf8, utf8);
     is_atom(Value) ->
       atom_to_binary(Value, utf8);
-    true -> 
-      case ForceList of 
-        true -> 
-          [List] = io_lib:format("~p", [Value]), 
+    true ->
+      case ForceList of
+        true ->
+          [List] = io_lib:format("~p", [Value]),
           list_to_binary(List);
-        _ -> 
+        _ ->
           Value
       end
   end.
@@ -89,14 +89,14 @@ make_id(Term)                     -> to_binary(Term, true).
 make_field({Key, Value}) ->
   {Key, make_field(Value)};
 make_field(Value) ->
-  if 
-    is_atom(Value) -> 
+  if
+    is_atom(Value) ->
       case Value of
         true      -> to_binary(Value);
         false     -> to_binary(Value);
         _         -> {<<"atom">>, atom_to_binary(Value, utf8)}
       end;
-    is_pid(Value) -> 
+    is_pid(Value) ->
       {<<"pid">>, list_to_binary(pid_to_list(Value))};
     is_list(Value)  ->
       case io_lib:printable_unicode_list(Value) of
@@ -108,17 +108,17 @@ make_field(Value) ->
   end.
 
 make_document(Table, Key, Values) ->
-  TableInfo = ctail:table(Table), 
+  TableInfo = ctail:table(Table),
   Document = list_to_document(tl(TableInfo#table.fields), Values),
 
-  list_to_tuple([<<"_id">>, make_id(Key)|Document]).
+  {<<"$set">>, list_to_tuple([<<"_id">>, make_id(Key)|Document])}.
 
 list_to_document([],             [])             -> [];
 list_to_document([Field|Fields], [Value|Values]) ->
   case Value of
-    undefined -> 
+    undefined ->
       list_to_document(Fields, Values);
-    _ -> 
+    _ ->
       case Field of
         feed_id -> [Field, make_id(Value)|list_to_document(Fields, Values)];
         _       -> [Field, make_field(Value)|list_to_document(Fields, Values)]
@@ -126,19 +126,19 @@ list_to_document([Field|Fields], [Value|Values]) ->
   end.
 
 persist(Record) ->
-  Table         = element(1, Record), 
-  Key           = element(2, Record), 
+  Table         = element(1, Record),
+  Key           = element(2, Record),
   [_, _|Values] = tuple_to_list(Record),
   Document      = make_document(Table, Key, Values),
   Selector      = {<<"_id">>, make_id(Key)},
-  exec(update, [to_binary(Table), Selector, Document, true]).
+  exec(update, [to_binary(Table), Selector, Document, true, false]).
 
 put(Records) when is_list(Records) ->
-  try lists:foreach(fun persist/1, Records) 
-  catch 
-    error:Reason -> {error, Reason} 
+  try lists:foreach(fun persist/1, Records)
+  catch
+    error:Reason -> {error, Reason}
   end;
-put(Record) -> 
+put(Record) ->
   put([Record]).
 
 delete(Table, Key) ->
@@ -146,22 +146,20 @@ delete(Table, Key) ->
   ok.
 
 make_record(Table, Document) ->
-  TableInfo = ctail:table(Table), 
-  PropList  = document_to_proplist(tuple_to_list(Document)), 
+  TableInfo = ctail:table(Table),
+
+  PropList  = document_to_proplist(maps:to_list(Document)),
   Values    = [proplists:get_value(atom_to_binary(Field, utf8), PropList) || Field <- TableInfo#table.fields],
 
   list_to_tuple([Table|Values]).
 
 decode_field(<<"true">>)                  -> true;
 decode_field(<<"false">>)                 -> false;
-decode_field({<<"atom">>, Atom})          -> binary_to_atom(Atom, utf8);
-decode_field({<<"pid">>, Pid})            -> list_to_pid(binary_to_list(Pid));
-decode_field({<<"tuple_list">>, List})    ->
-  lists:foldl(fun({Key, Value}, Acc) ->
-                Acc ++ [{decode_key(Key), decode_field(Value)}]
-              end, [], List);
-
-decode_field(B={<<"binary">>, _})         -> B;
+decode_field(#{<<"atom">> := Atom})       -> binary_to_atom(Atom, utf8);
+decode_field(#{<<"pid">> := Pid})         -> list_to_pid(binary_to_list(Pid));
+decode_field(#{<<"tuple_list">> := List}) ->
+  {<<"tuple_list">>, [decode_field(V) || V <- List]};
+decode_field(#{<<"binary">> := V})        -> {<<"binary">>, V};
 decode_field({Key, Value})                ->
   {decode_key(Key), decode_field(Value)};
 decode_field(Value) when is_binary(Value) ->
@@ -174,12 +172,20 @@ decode_field(Value) when is_list(Value)   ->
             lists:map(fun decode_field/1, Value);
           true  ->
             [ begin
+                Key = hd(maps:keys(Val)),
                 Atom = binary_to_atom(Key, utf8),
-                {Atom, decode_field(Val)}
-              end || {Key, Val} <- Value]
+                {Atom, decode_field(maps:get(Key, Val))}
+              end || Val <- Value]
         end;
     true  -> Value
   end;
+decode_field(Value) when is_map(Value)    ->
+  Res = [ {decode_key(K), decode_field(maps:get(K, Value))} || K <- maps:keys(Value)],
+  case length(Res) > 1 of
+    false -> hd(Res);
+    true  -> Res
+  end;
+
 decode_field(Value)                       ->  Value.
 
 decode_key(V) when is_atom(V) -> atom_to_binary(V, utf8);
@@ -194,7 +200,8 @@ decode_key(_V) -> <<"unknown">>.
 
 is_proplist(List) ->
     is_list(List) andalso
-        lists:all(fun({AtomKey,_}) ->
+        lists:all(fun(Map) when is_map(Map) ->
+                      AtomKey = hd(maps:keys(Map)),
                        Atom = try binary_to_atom(AtomKey, utf8)
                        catch error:badarg -> AtomKey
                        end,
@@ -213,17 +220,18 @@ decode_id(List) ->
 
 document_to_proplist(Doc) -> document_to_proplist(Doc, []).
 document_to_proplist([],                     Acc) -> Acc;
-document_to_proplist([<<"_id">>,     V|Doc], Acc) -> document_to_proplist(Doc, [{<<"id">>, decode_id(V)}|Acc]);
-document_to_proplist([<<"feed_id">>, V|Doc], Acc) -> document_to_proplist(Doc, [{<<"feed_id">>, decode_id(V)}|Acc]);
-document_to_proplist([F,             V|Doc], Acc) -> document_to_proplist(Doc, [{F, decode_field(V)}|Acc]).
+document_to_proplist([{<<"_id">>,     V}|Doc], Acc) -> document_to_proplist(Doc, [{<<"id">>, decode_id(V)}|Acc]);
+document_to_proplist([{<<"feed_id">>, V}|Doc], Acc) -> document_to_proplist(Doc, [{<<"feed_id">>, decode_id(V)}|Acc]);
+document_to_proplist([{F,             V}|Doc], Acc) -> document_to_proplist(Doc, [{F, decode_field(V)}|Acc]).
 
 get(Table, Key) ->
   Result = exec(find_one, [to_binary(Table), {<<"_id">>, make_id(Key)}]),
-  case Result of 
-    {} -> 
-      {error, not_found}; 
-    {Document} -> 
-      {ok, make_record(Table, Document)}
+
+  case maps:size(Result) of
+    0 ->
+      {error, not_found};
+    _ ->
+      {ok, make_record(Table, Result)}
   end.
 
 find(Table, Selector, Limit) ->
@@ -236,12 +244,12 @@ find(Table, Selector, Limit) ->
     _ -> [make_record(Table, Document) || Document <- Result]
   end.
 
-index(Table, Key, Value) -> 
+index(Table, Key, Value) ->
   find(Table, {to_binary(Key), to_binary(Value)}, infinity).
 
-all(Table) -> 
+all(Table) ->
   find(Table, {}, infinity).
 
-count(Table) -> 
+count(Table) ->
   {_, {_, Count}} = exec(command, [{<<"count">>, to_binary(Table)}]),
   Count.
