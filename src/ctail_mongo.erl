@@ -157,6 +157,10 @@ decode_field(<<"true">>)                  -> true;
 decode_field(<<"false">>)                 -> false;
 decode_field(#{<<"atom">> := Atom})       -> binary_to_atom(Atom, utf8);
 decode_field(#{<<"pid">> := Pid})         -> list_to_pid(binary_to_list(Pid));
+decode_field(Coordinates = #{<<"coordinates">> := _V}) ->
+  list_to_tuple(lists:foldl(fun (Key, Acc) ->
+                                [Key, maps:get(Key, Coordinates)|Acc]
+                            end, [], maps:keys(Coordinates)));
 decode_field(#{<<"tuple_list">> := List}) ->
   {<<"tuple_list">>, [decode_field(V) || V <- List]};
 decode_field(#{<<"binary">> := V})        -> {<<"binary">>, V};
