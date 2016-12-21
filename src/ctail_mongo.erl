@@ -156,6 +156,7 @@ make_record(Table, Document) ->
 decode_field(<<"true">>)                  -> true;
 decode_field(<<"false">>)                 -> false;
 decode_field(#{<<"atom">> := Atom})       -> binary_to_atom(Atom, utf8);
+decode_field(<<>>)                        -> [];
 decode_field(#{<<"pid">> := Pid})         -> list_to_pid(binary_to_list(Pid));
 decode_field(Coordinates = #{<<"coordinates">> := _V}) ->
   list_to_tuple(lists:foldl(fun (Key, Acc) ->
@@ -166,8 +167,7 @@ decode_field(#{<<"tuple_list">> := List}) ->
 decode_field(#{<<"binary">> := V})        -> {<<"binary">>, V};
 decode_field({Key, Value})                ->
   {decode_key(Key), decode_field(Value)};
-decode_field(Value) when is_binary(Value) ->
-  unicode:characters_to_list(Value, utf8);
+decode_field(Value) when is_binary(Value) -> Value;
 decode_field(Value) when is_list(Value)   ->
   case io_lib:printable_unicode_list(Value) of
     false ->
@@ -181,7 +181,7 @@ decode_field(Value) when is_list(Value)   ->
               {Atom, decode_field(maps:get(Key, Val))}
             end || Val <- Value]
       end;
-    true  -> Value
+    true  -> list_to_binary(Value)
   end;
 decode_field(Value) when is_map(Value)    ->
   Res = [ {decode_key(K), decode_field(maps:get(K, Value))} || K <- maps:keys(Value)],
@@ -231,15 +231,13 @@ document_to_proplist([{F,             V}|Doc], Acc) -> document_to_proplist(Doc,
 get(Table, Key) ->
   Result = exec(find_one, [to_binary(Table), {<<"_id">>, make_id(Key)}]),
 
-  case maps:size(Result) of
-    0 ->
-      {error, not_found};
-    _ ->
-      {ok, make_record(Table, Result)}
+  case Result of
+    undefined -> {error, not_found};
+    _         -> {ok, make_record(Table, Result)}
   end.
 
 find(Table, Selector, Limit) ->
-  Cursor = exec(find, [to_binary(Table), Selector]),
+  {ok, Cursor} = exec(find, [to_binary(Table), Selector]),
   Result = mc_cursor:take(Cursor, Limit),
   mc_cursor:close(Cursor),
 
