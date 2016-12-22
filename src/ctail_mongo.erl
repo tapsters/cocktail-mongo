@@ -94,6 +94,7 @@ make_field(Value) ->
       case Value of
         true      -> to_binary(Value);
         false     -> to_binary(Value);
+        undefined -> undefined;
         _         -> {<<"atom">>, atom_to_binary(Value, utf8)}
       end;
     is_pid(Value) ->
@@ -115,14 +116,9 @@ make_document(Table, Key, Values) ->
 
 list_to_document([],             [])             -> [];
 list_to_document([Field|Fields], [Value|Values]) ->
-  case Value of
-    undefined ->
-      list_to_document(Fields, Values);
-    _ ->
-      case Field of
-        feed_id -> [Field, make_id(Value)|list_to_document(Fields, Values)];
-        _       -> [Field, make_field(Value)|list_to_document(Fields, Values)]
-      end
+  case Field of
+    feed_id -> [Field, make_id(Value)|list_to_document(Fields, Values)];
+    _       -> [Field, make_field(Value)|list_to_document(Fields, Values)]
   end.
 
 persist(Record) ->
