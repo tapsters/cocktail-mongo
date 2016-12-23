@@ -233,13 +233,15 @@ get(Table, Key) ->
   end.
 
 find(Table, Selector, Limit) ->
-  {ok, Cursor} = exec(find, [to_binary(Table), Selector]),
-  Result = mc_cursor:take(Cursor, Limit),
-  mc_cursor:close(Cursor),
-
-  case Result of
-    [] -> [];
-    _ -> [make_record(Table, Document) || Document <- Result]
+  case exec(find, [to_binary(Table), Selector]) of
+    {ok, Cursor} ->
+      Result = mc_cursor:take(Cursor, Limit),
+      mc_cursor:close(Cursor),
+      case Result of
+        [] -> [];
+        _ -> [make_record(Table, Document) || Document <- Result]
+      end;
+    _            -> []
   end.
 
 index(Table, Key, Value) ->
