@@ -173,8 +173,7 @@ decode_field(Value) when is_list(Value)   ->
         true  ->
           [ begin
               Key = hd(maps:keys(Val)),
-              Atom = binary_to_atom(Key, utf8),
-              {Atom, decode_field(maps:get(Key, Val))}
+              {Key, decode_field(maps:get(Key, Val))}
             end || Val <- Value]
       end;
     true  -> list_to_binary(Value)
