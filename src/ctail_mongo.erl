@@ -167,15 +167,7 @@ decode_field(Value) when is_binary(Value) -> Value;
 decode_field(Value) when is_list(Value)   ->
   case io_lib:printable_unicode_list(Value) of
     false ->
-      case is_proplist(Value) of
-        false ->
-          lists:map(fun decode_field/1, Value);
-        true  ->
-          [ begin
-              Key = hd(maps:keys(Val)),
-              {Key, decode_field(maps:get(Key, Val))}
-            end || Val <- Value]
-      end;
+      lists:map(fun decode_field/1, Value);
     true  -> list_to_binary(Value)
   end;
 decode_field(Value) when is_map(Value)    ->
@@ -195,19 +187,6 @@ decode_key(V) when is_list(V) ->
   end;
 decode_key(V) when is_binary(V) -> V;
 decode_key(_V) -> <<"unknown">>.
-
-
-is_proplist(List) ->
-  is_list(List) andalso
-    lists:all(fun(Map) when is_map(Map) ->
-                  AtomKey = hd(maps:keys(Map)),
-                  Atom = try binary_to_atom(AtomKey, utf8)
-                         catch error:badarg -> AtomKey
-                         end,
-                  is_atom(Atom);
-                 (_)           -> false
-              end,
-              List).
 
 decode_id({<<ObjectId:12/binary>>}) ->
   {ObjectId};
