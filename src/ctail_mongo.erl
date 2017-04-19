@@ -7,7 +7,7 @@
 
 %% Custom functions
 -export([exec/2]).
--export([find/3, find/4]]).
+-export([find/3, find/4]).
 
 %% Backend callbacks
 -export([init/0]).
