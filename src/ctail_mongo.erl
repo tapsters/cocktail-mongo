@@ -7,7 +7,7 @@
 
 %% Custom functions
 -export([exec/2]).
--export([find/3]).
+-export([find/3, find/4]]).
 
 %% Backend callbacks
 -export([init/0]).
@@ -210,10 +210,18 @@ get(Table, Key) ->
     _         -> {ok, make_record(Table, Result)}
   end.
 
+find(Table, Selector, infinity) ->
+  find(Table, Selector, 0, 0);
 find(Table, Selector, Limit) ->
-  case exec(find, [to_binary(Table), Selector]) of
+  find(Table, Selector, 0, Limit).
+
+find(Table, Selector, Skip, Limit) ->
+  case exec(find, [to_binary(Table), Selector, #{skip => Skip, batchsize => Limit}]) of
     {ok, Cursor} ->
-      Result = mc_cursor:take(Cursor, Limit),
+      Result = case Limit of
+                 0 -> mc_cursor:rest(Cursor);
+                 _ -> mc_cursor:next_batch(Cursor)
+               end,
       mc_cursor:close(Cursor),
       case Result of
         [] -> [];
