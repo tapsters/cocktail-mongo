@@ -30,15 +30,31 @@ init() ->
   ok.
 
 connect() ->
-  Config = ctail:config(mongo),
+  case ctail:config(mongo) of
+    undefined -> skip;
+    Config    ->
+      {connection, ConnectionConfig} = proplists:lookup(connection, Config),
+      {pool,       PoolConfig}       = proplists:lookup(pool, Config),
 
-  {connection, ConnectionConfig} = proplists:lookup(connection, Config),
-  {pool,       PoolConfig}       = proplists:lookup(pool, Config),
+      PoolBaseOptions = [{name, {local, ?POOL_NAME}}, {worker_module, mc_worker}],
+      PoolOptions     = PoolBaseOptions++PoolConfig,
+      Spec            = poolboy:child_spec(?POOL_NAME, PoolOptions, ConnectionConfig),
+      {ok, _Pid}      = supervisor:start_child(ctail_sup, Spec)
+  end,
 
-  PoolBaseOptions = [{name, {local, ?POOL_NAME}}, {worker_module, mc_worker}],
-  PoolOptions     = PoolBaseOptions++PoolConfig,
-  Spec            = poolboy:child_spec(?POOL_NAME, PoolOptions, ConnectionConfig),
-  {ok, _}         = supervisor:start_child(ctail_sup, Spec).
+  case ctail:config(mongo_rs) of
+    undefined -> skip;
+    RsConfig  ->
+      {pool, RsPoolConfig} = proplists:lookup(pool, RsConfig),
+      {rs, Rs} = proplists:lookup(rs, RsConfig),
+
+      {name, RsName} = proplists:lookup(name, Rs),
+      {seed, RsSeed} = proplists:lookup(seed, Rs),
+      {connection, RsConnection} = proplists:lookup(connection, Rs),
+
+      TopologyOptions = RsPoolConfig ++ [ {name, ?POOL_NAME}, {register, ?POOL_NAME}],
+      {ok, _RsPid} = mongoc:connect({ rs, RsName, RsSeed }, TopologyOptions, RsConnection)
+  end.
 
 create_table(Table) ->
   exec(command, [{<<"create">>, to_binary(Table#table.name)}]).
