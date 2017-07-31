@@ -227,8 +227,9 @@ get(Table, Key) ->
   Result = exec(find_one, [to_binary(Table), {<<"_id">>, make_id(Key)}]),
 
   case Result of
-    undefined -> {error, not_found};
-    _         -> {ok, make_record(Table, Result)}
+    undefined   -> {error, not_found};
+    {error,Msg} -> {error, Msg};
+    _           -> {ok, make_record(Table, Result)}
   end.
 
 find(Table, Selector, infinity) ->
