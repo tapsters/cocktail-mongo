@@ -23,7 +23,7 @@
 exec(Fun, Args) -> exec(ctail:config(strategy), Fun, Args).
 
 exec(mongo, Fun, Args) ->
-  poolboy:transaction(?POOL_NAME, fun(Worker) -> apply(mc_worker_api, Fun, [Worker]++Args) end);
+  mongoc:transaction(?POOL_NAME, fun(#{pool := Worker}) -> apply(mc_worker_api, Fun, [Worker]++Args) end);
 exec(mongo_rs, Fun, Args) ->
   mongoc:transaction(?RS_POOL_NAME, fun(#{pool := Worker}) -> apply(mc_worker_api, Fun, [Worker]++Args) end);
 exec(_, Fun, Args) -> exec(mongo, Fun, Args).
@@ -41,11 +41,14 @@ init_connection(mongo) ->
   Config = ctail:config(mongo),
   {connection, ConnectionConfig} = proplists:lookup(connection, Config),
   {pool,       PoolConfig}       = proplists:lookup(pool, Config),
+  {host, Host} = proplists:lookup(host, ConnectionConfig),
 
-  PoolBaseOptions = [{name, {local, ?POOL_NAME}}, {worker_module, mc_worker}],
-  PoolOptions     = PoolBaseOptions++PoolConfig,
-  Spec            = poolboy:child_spec(?POOL_NAME, PoolOptions, ConnectionConfig),
-  {ok, _Pid}      = supervisor:start_child(ctail_sup, Spec);
+  Database = proplists:lookup(database, ConnectionConfig),
+  WMode = proplists:lookup(w_mode, ConnectionConfig),
+
+  TopologyOptions = PoolConfig ++ [ {name, ?POOL_NAME}, {register, ?POOL_NAME}],
+
+  {ok, _Topology} = mongoc:connect({ single, Host }, TopologyOptions, [Database, WMode]);
 
 init_connection(mongo_rs) ->
   RsConfig = ctail:config(mongo_rs),
@@ -245,6 +248,9 @@ find(Table, Selector, Skip, Limit) ->
                  _ -> mc_cursor:next_batch(Cursor)
                end,
       mc_cursor:close(Cursor),
+      receive
+        {ack,Cursor,{error,normal}} -> skip
+      end,
       case Result of
         [] -> [];
         _ -> [make_record(Table, Document) || Document <- Result]
