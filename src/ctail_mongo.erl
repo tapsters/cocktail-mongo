@@ -7,7 +7,7 @@
 
 %% Custom functions
 -export([exec/2]).
--export([find/3, find/4]).
+-export([find/3, find/4, find_one/2]).
 
 %% Backend callbacks
 -export([init/0]).
@@ -256,6 +256,12 @@ find(Table, Selector, Skip, Limit) ->
         _ -> [make_record(Table, Document) || Document <- Result]
       end;
     _            -> []
+  end.
+
+find_one(Table, Selector) ->
+  case find(Table, Selector, 0, 1) of
+    [] -> undefined;
+    [Record] -> Record
   end.
 
 index(Table, Key, Value) ->
