@@ -14,6 +14,7 @@
 -export([create_table/1, add_table_index/2, dir/0, destroy/0]).
 -export([next_id/2, put/1, delete/2]).
 -export([get/2, index/3, all/1, count/1]).
+-export([to_binary/1]).
 
 -define(POOL_NAME, mongo_pool).
 -define(RS_POOL_NAME, rs_mongo_pool).
