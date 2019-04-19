@@ -14,6 +14,7 @@
 -export([create_table/1, add_table_index/2, dir/0, destroy/0]).
 -export([next_id/2, put/1, delete/2]).
 -export([get/2, index/3, all/1, count/1]).
+-export([batch/4]).
 -export([to_binary/1, to_binary/2]).
 
 -define(POOL_NAME, mongo_pool).
@@ -274,3 +275,21 @@ all(Table) ->
 count(Table) ->
   {_, {_, Count}} = exec(command, [{<<"count">>, to_binary(Table)}]),
   Count.
+
+batch(Table, Selector, BatchSize, BatchHandler) ->
+  {ok, Cursor} = exec(find, [to_binary(Table), Selector, #{skip => 0, batchsize => BatchSize}]),
+  batch_process(cursor_next(Table, Cursor), Table, Cursor, BatchHandler).
+
+batch_process([], _, Cursor, _) ->
+  mc_cursor:close(Cursor);
+batch_process(Data, Table, Cursor, BatchHandler) ->
+  BatchHandler(Data),
+  batch_process(cursor_next(Table, Cursor), Table, Cursor, BatchHandler).
+
+cursor_next(Table, Cursor) ->
+  Result = mc_cursor:next_batch(Cursor),
+  case Result of
+    [] -> [];
+    error -> [];
+    _  -> [make_record(Table, Document) || Document <- Result]
+  end.
