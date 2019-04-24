@@ -16,6 +16,7 @@
 -export([get/2, index/3, all/1, count/1]).
 -export([batch/4]).
 -export([to_binary/1, to_binary/2]).
+-export([aggregate/2]).
 
 -define(POOL_NAME, mongo_pool).
 -define(RS_POOL_NAME, rs_mongo_pool).
@@ -292,4 +293,15 @@ cursor_next(Table, Cursor) ->
     [] -> [];
     error -> [];
     _  -> [make_record(Table, Document) || Document <- Result]
+  end.
+
+aggregate(Table, Pipeline) ->
+  BatchSize = 10000000,
+  case exec(command, [{
+    <<"aggregate">>, atom_to_binary(Table, utf8),
+    <<"pipeline">>, Pipeline,
+    <<"cursor">>, {<<"batchSize">>, BatchSize}
+  }]) of
+    {true, #{<<"cursor">> := #{<<"firstBatch">> := Items}}} -> {ok, Items};
+    Error -> Error
   end.
