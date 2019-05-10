@@ -12,7 +12,7 @@
 %% Backend callbacks
 -export([init/0]).
 -export([create_table/1, add_table_index/2, dir/0, destroy/0]).
--export([next_id/2, put/1, delete/2]).
+-export([next_id/0, put/1, delete/2]).
 -export([get/2, index/3, all/1, count/1]).
 -export([batch/4]).
 -export([to_binary/1, to_binary/2]).
@@ -85,7 +85,7 @@ destroy() ->
   [ drop_table(Table) || Table <- dir() ],
   ok.
 
-next_id(_Table, _Incr) ->
+next_id() ->
   mongo_id_server:object_id().
 
 to_binary({<<ObjectId:12/binary>>}) -> {ObjectId};
