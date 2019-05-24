@@ -199,9 +199,9 @@ decode_field(Value) when is_list(Value)   ->
   end;
 decode_field(Value) when is_map(Value)    ->
   Res = [ {decode_key(K), decode_field(maps:get(K, Value))} || K <- maps:keys(Value)],
-  case length(Res) > 1 of
-    false -> hd(Res);
-    true  -> Res
+  case length(Res) =:= 1 of
+    true  -> hd(Res);
+    false -> Res
   end;
 
 decode_field(Value)                       ->  Value.
